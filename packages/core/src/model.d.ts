@@ -775,17 +775,18 @@ type Same<A, B> = A extends B ? (B extends A ? true : false) : false;
 // K,V => { K: V }
 type AsInclude<K extends string, V> = { [P in K]: V };
 
-// Extract instance from class
-type InstanceOfClass<MC extends ModelStatic> =
-  MC extends ModelStatic<infer MI> ? MI : never;
-
 // Used to filter out `any` from unbounded types
 type IsAny<T> = 0 extends (1 & T) ? true : false;
 
+// Wrapper for deep Raw projection.
+// TODO: this could be extended for typing attribute selection projections.
+type ProjectedModel<I extends Model, Raw extends boolean> =
+  Raw extends true ? Attributes<I> : I;
+
 /*
- *********************
- *     Inference     *
- *********************
+ *******************************
+ *     Association Helpers     *
+ *******************************
  */
 // Type keys on M that match NonAttribute<T>
 type NonAttributeOfType<M extends Model, T> = {
@@ -861,61 +862,46 @@ type AssocFrom<M extends ModelStatic, T extends ModelStatic> =
   AssocTypeToTarget<M, T> | AssocTypeToSource<M, T>;
 
 /*
- ***********************
- *     Cardinality     *
- ***********************
+ *******************************
+ *     Cardinality Helpers     *
+ *******************************
  */
 
-// Association cardinality+nullability narrower
+// Association cardinality+nullity narrower
 type CardinalAssociationType<A extends Association, IsRaw extends boolean, X extends IncludesOf<any, any> = ({} | null)> =
-  A extends HasManyAssociation<any, infer T extends Model, any, any> ? NonNullable<Array<ProjectInstance<T, IsRaw> & X>> :
-  A extends BelongsToManyAssociation<any, infer T extends Model, any, any, any> ? NonNullable<Array<ProjectInstance<T, IsRaw> & X>> :
-  A extends HasOneAssociation<any, infer T extends Model, any, any> ? ((ProjectInstance<T, IsRaw> & X) | null) :
-  A extends BelongsToAssociation<any, infer T extends Model, any, any> ? ((ProjectInstance<T, IsRaw> & X) | null) :
+  A extends HasManyAssociation<any, infer T extends Model, any, any> ? NonNullable<Array<ProjectedModel<T, IsRaw> & X>> :
+  A extends BelongsToManyAssociation<any, infer T extends Model, any, any, any> ? NonNullable<Array<ProjectedModel<T, IsRaw> & X>> :
+  A extends HasOneAssociation<any, infer T extends Model, any, any> ? ((ProjectedModel<T, IsRaw> & X) | null) :
+  A extends BelongsToAssociation<any, infer T extends Model, any, any> ? ((ProjectedModel<T, IsRaw> & X) | null) :
   // fallback: union cardinality
-  A extends Association<any, infer T extends Model, any, any> ? (T & X) | Array<ProjectInstance<T, IsRaw> & X> | null :
+  A extends Association<any, infer T extends Model, any, any> ? (T & X) | Array<ProjectedModel<T, IsRaw> & X> | null :
   never;
 
-// NonAttribute cardinality+nullability narrower (associated T declared on M)
+// NonAttribute cardinality+nullity narrower (associated T declared on M)
 type CardinalNonAttributeType<M extends Model, T extends Model, IsRaw extends boolean, X extends IncludesOf<any, any> = ({} | null)> =
   // If not found as T
   [NonAttributeOfType<M, T>] extends [never]
     // Try T[]
     ? [NonAttributeOfType<M, T[]>] extends [never]
       // Fallback: union cardinality
-      ? (ProjectInstance<T, IsRaw> & X) | null | Array<ProjectInstance<T, IsRaw> & X>
-      : NonNullable<Array<ProjectInstance<T, IsRaw> & X>>
-    : ((ProjectInstance<T, IsRaw> & X) | null);
-
-/*
- ***************************
- *     Include returns     *
- ***************************
- */
-
-// Model inclusions are inherently nullable without specified options
-type IncludedByModel<M extends ModelStatic, T extends ModelStatic, IsRaw extends boolean> =
-  AssocNameFrom<M, T> extends [never]
-    // Named by declaration
-    ? AsInclude<NonAttributeOfType<InstanceType<M>, InstanceType<T>>, CardinalNonAttributeType<InstanceType<M>, InstanceType<T>, IsRaw>>
-    // Named by association
-    : AsInclude<AssocNameFrom<M, T>, CardinalAssociationType<AssocFrom<M, T>, IsRaw>>;
-
-type IncludedByAssociation<M extends ModelStatic, A extends Association, IsRaw extends boolean> =
-  AsInclude<
-    AssocNameOf<M, A>,
-    CardinalAssociationType<A, IsRaw>
-  >;
+      ? (ProjectedModel<T, IsRaw> & X) | null | Array<ProjectedModel<T, IsRaw> & X>
+      : NonNullable<Array<ProjectedModel<T, IsRaw> & X>>
+    : ((ProjectedModel<T, IsRaw> & X) | null);
 
 /*
  ***********************************
- *     Include Options helpers     *
+ *     IncludeOptions helpers     *
  ***********************************
  */
 
-type ProjectInstance<I extends Model, Raw extends boolean> =
-  Raw extends true ? Attributes<I> : I;
+// Canonical nullity of T based on cardinality + parameters in I
+type IncludeOptionsNullity<I extends IncludeOptions, T> =
+  T extends any[] ? NonNullable<T> :
+  I extends { required: true } ? NonNullable<T> :
+  I extends { where: any } ? NonNullable<T> :
+  T | null;
 
+// Infer key of inclusion
 type IncludeOptionsKey<M extends ModelStatic, I extends IncludeOptions> =
   // Use the alias, if supplied
   I extends { as: infer A extends string }
@@ -928,16 +914,11 @@ type IncludeOptionsKey<M extends ModelStatic, I extends IncludeOptions> =
         : AssocNameFrom<M, U>
       : never;
 
-type ApplyIncludeNullability<I extends IncludeOptions, T> =
-  T extends any[] ? NonNullable<T> :
-  I extends { required: true } ? NonNullable<T> :
-  I extends { where: any } ? NonNullable<T> :
-  T | null;
-
+// Infer target model of inclusion
 type IncludeOptionsModel<M extends ModelStatic, I extends IncludeOptions, IsRaw extends boolean, X extends IncludesOf<any, any> = ({} | null)> =
   I extends IncludeOptions & { model: ModelStatic }
     ? I extends { model: infer T extends ModelStatic }
-      ? ApplyIncludeNullability<
+      ? IncludeOptionsNullity<
         I,
         AssocNameFrom<M, T> extends [never]
           ? CardinalNonAttributeType<InstanceType<M>, InstanceType<T>, IsRaw, X>
@@ -946,6 +927,28 @@ type IncludeOptionsModel<M extends ModelStatic, I extends IncludeOptions, IsRaw 
     : unknown
   : unknown;
 
+/*
+ ***************************
+ *     Include returns     *
+ ***************************
+ */
+
+// Model inclusions are inherently nullable without specified options
+type IncludedByModel<M extends ModelStatic, T extends ModelStatic, IsRaw extends boolean> =
+  // If not named by static associations
+  AssocNameFrom<M, T> extends [never]
+    // Try to infer from declared class attributes
+    ? AsInclude<NonAttributeOfType<InstanceType<M>, InstanceType<T>>, CardinalNonAttributeType<InstanceType<M>, InstanceType<T>, IsRaw>>
+    : AsInclude<AssocNameFrom<M, T>, CardinalAssociationType<AssocFrom<M, T>, IsRaw>>;
+
+// Association inclusion needs a static association on M
+type IncludedByAssociation<M extends ModelStatic, A extends Association, IsRaw extends boolean> =
+  AsInclude<
+    AssocNameOf<M, A>,
+    CardinalAssociationType<A, IsRaw>
+  >;
+
+// Option inclusion can recurse and may use association rather than include
 type IncludedByOption<M extends ModelStatic, I extends IncludeOptions, IsRaw extends boolean, X extends IncludesOf<any, any> = ({} | null)> =
   // If by association, destructure
   I extends { association: infer A extends Association }
