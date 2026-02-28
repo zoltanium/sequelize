@@ -66,7 +66,7 @@ class User_Attr extends Model<InferAttributes<User_Attr>, InferCreationAttribute
 
   username!: string;
 
-  @HasMany(() => User_Attr, {})
+  @HasMany(() => Post_Attr, {})
   // Arrays are always non-null
   declare posts: NonAttribute<Post_Attr[]>;
 }
@@ -76,7 +76,7 @@ class Post_Attr extends Model<InferAttributes<Post_Attr>, InferCreationAttribute
 
   userId!: number;
 
-  @BelongsTo(() => Post_Attr, {})
+  @BelongsTo(() => User_Attr, {})
   // Base types can only be narrowed, so we must always explicitly declare NonAttribute generic as nullable.
   // TODO: useful to export a ReferenceTo<T extends Model> = NonAttribute<T | null>?
   user!: NonAttribute<User_Attr | null>;
@@ -96,6 +96,10 @@ type IsNotAssignableToAny<T, U extends readonly unknown[]> =
       ? IsNotAssignableToAny<T, R>
       : false
     : true;
+
+type OptionalPick<T, K extends PropertyKey> =
+  T extends null | undefined ? undefined :
+  K extends keyof T ? T[K] : undefined;
 
 describe('Utility types used in these tests', () => {
   describe('IsAssignableToEvery', () => {
@@ -160,8 +164,8 @@ describe('Model#findOne - typescript augment checks', () => {
 
   describe('Simple returns on declared root', () => {
     it('should match on query', async () => {
-      const result = await Post_Assoc.findOne({});
-      type RT = typeof result;
+      const query = async () => Post_Assoc.findOne({});
+      type RT = Awaited<ReturnType<typeof query>>;
 
       type Match = [Post_Assoc, null];
       type NotMatch = [undefined];
@@ -171,10 +175,10 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on required query', async () => {
-      const result = await Post_Assoc.findOne({
+      const query = async () => Post_Assoc.findOne({
         rejectOnEmpty: true,
       });
-      type RT = typeof result;
+      type RT = Awaited<ReturnType<typeof query>>;
 
       type Match = [Post_Assoc];
       type NotMatch = [null, undefined];
@@ -184,10 +188,10 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on raw query', async () => {
-      const result = await Post_Assoc.findOne({
+      const query = async () => Post_Assoc.findOne({
         raw: true,
       });
-      type RT = typeof result;
+      type RT = Awaited<ReturnType<typeof query>>;
 
       type Match = [PostRaw, null];
       type NotMatch = [Post_Assoc, undefined];
@@ -197,11 +201,11 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on raw required query', async () => {
-      const result = await Post_Assoc.findOne({
+      const query = async () => Post_Assoc.findOne({
         raw: true,
         rejectOnEmpty: true,
       });
-      type RT = typeof result;
+      type RT = Awaited<ReturnType<typeof query>>;
 
       type Match = [PostRaw];
       type NotMatch = [Post_Assoc, null, undefined];
@@ -213,8 +217,8 @@ describe('Model#findOne - typescript augment checks', () => {
 
   describe('Simple returns on decorated root', () => {
     it('should match on query', async () => {
-      const result = await Post_Attr.findOne({});
-      type RT = typeof result;
+      const query = async () => Post_Attr.findOne({});
+      type RT = Awaited<ReturnType<typeof query>>;
 
       type Match = [Post_Attr, null];
       type NotMatch = [undefined];
@@ -224,10 +228,10 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on required query', async () => {
-      const result = await Post_Attr.findOne({
+      const query = async () => Post_Attr.findOne({
         rejectOnEmpty: true,
       });
-      type RT = typeof result;
+      type RT = Awaited<ReturnType<typeof query>>;
 
       type Match = [Post_Attr];
       type NotMatch = [null, undefined];
@@ -237,10 +241,10 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on raw query', async () => {
-      const result = await Post_Attr.findOne({
+      const query = async () => Post_Attr.findOne({
         raw: true,
       });
-      type RT = typeof result;
+      type RT = Awaited<ReturnType<typeof query>>;
 
       type Match = [PostRaw, null];
       type NotMatch = [Post_Attr, undefined];
@@ -251,11 +255,11 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on raw required query', async () => {
-      const result = await Post_Attr.findOne({
+      const query = async () => Post_Attr.findOne({
         raw: true,
         rejectOnEmpty: true,
       });
-      type RT = typeof result;
+      type RT = Awaited<ReturnType<typeof query>>;
 
       type Match = [PostRaw];
       type NotMatch = [Post_Attr, null, undefined];
@@ -267,13 +271,12 @@ describe('Model#findOne - typescript augment checks', () => {
 
   describe('Nullable declared root with one level of inclusion', () => {
     it('should match on query with model include', async () => {
-      const result = await Post_Assoc.findOne({
+      const query = async () => Post_Assoc.findOne({
         include: User_Assoc,
       });
-      const included = result?.user;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'user'>;
 
       type Match = [Post_Assoc, null];
       type NotMatch = [undefined];
@@ -286,13 +289,12 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with model include [array]', async () => {
-      const result = await User_Assoc.findOne({
+      const query = async () => User_Assoc.findOne({
         include: Post_Assoc,
       });
-      const included = result?.posts;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'posts'>;
 
       type Match = [User_Assoc, null];
       type NotMatch = [undefined];
@@ -307,13 +309,12 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with option include', async () => {
-      const result = await Post_Assoc.findOne({
+      const query = async () => Post_Assoc.findOne({
         include: User_Assoc,
       });
-      const included = result?.user;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'user'>;
 
       type Match = [Post_Assoc, null];
       type NotMatch = [undefined];
@@ -326,13 +327,12 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with option include [array]', async () => {
-      const result = await User_Assoc.findOne({
+      const query = async () => User_Assoc.findOne({
         include: Post_Assoc,
       });
-      const included = result?.posts;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'posts'>;
 
       type Match = [User_Assoc, null];
       type NotMatch = [undefined];
@@ -347,16 +347,15 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with named option include', async () => {
-      const result = await Post_Assoc.findOne({
+      const query = async () => Post_Assoc.findOne({
         include: {
           model: User_Assoc,
           as: 'somebody',
         },
       });
-      const included = result?.somebody;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'somebody'>;
 
       type Match = [Post_Assoc, null];
       type NotMatch = [undefined];
@@ -369,16 +368,15 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with named option include [array]', async () => {
-      const result = await User_Assoc.findOne({
+      const query = async () => User_Assoc.findOne({
         include: {
           model: Post_Assoc,
           as: 'stuff',
         },
       });
-      const included = result?.stuff;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'stuff'>;
 
       type Match = [User_Assoc, null];
       type NotMatch = [undefined];
@@ -393,16 +391,15 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with required option include', async () => {
-      const result = await Post_Assoc.findOne({
+      const query = async () => Post_Assoc.findOne({
         include: {
           model: User_Assoc,
           required: true,
         },
       });
-      const included = result?.user;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'user'>;
 
       type Match = [Post_Assoc, null];
       type NotMatch = [undefined];
@@ -417,16 +414,15 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with required option include [array]', async () => {
-      const result = await User_Assoc.findOne({
+      const query = async () => User_Assoc.findOne({
         include: {
           model: Post_Assoc,
           required: true,
         },
       });
-      const included = result?.posts;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'posts'>;
 
       type Match = [User_Assoc, null];
       type NotMatch = [undefined];
@@ -441,17 +437,16 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with named required option include', async () => {
-      const result = await Post_Assoc.findOne({
+      const query = async () => Post_Assoc.findOne({
         include: {
           model: User_Assoc,
           required: true,
           as: 'somebody',
         },
       });
-      const included = result?.somebody;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'somebody'>;
 
       type Match = [Post_Assoc, null];
       type NotMatch = [undefined];
@@ -466,17 +461,16 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with named required option include [array]', async () => {
-      const result = await User_Assoc.findOne({
+      const query = async () => User_Assoc.findOne({
         include: {
           model: Post_Assoc,
           required: true,
           as: 'stuff',
         },
       });
-      const included = result?.stuff;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'stuff'>;
 
       type Match = [User_Assoc, null];
       type NotMatch = [undefined];
@@ -493,13 +487,12 @@ describe('Model#findOne - typescript augment checks', () => {
 
   describe('Nullable decorated root with one level of inclusion', () => {
     it('should match on query with model include', async () => {
-      const result = await Post_Attr.findOne({
+      const query = async () => Post_Attr.findOne({
         include: User_Attr,
       });
-      const included = result?.user;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'user'>;
 
       type Match = [Post_Attr, null];
       type NotMatch = [undefined];
@@ -512,13 +505,12 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with model include [array]', async () => {
-      const result = await User_Attr.findOne({
+      const query = async () => User_Attr.findOne({
         include: Post_Attr,
       });
-      const included = result?.posts;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'posts'>;
 
       type Match = [User_Attr, null];
       type NotMatch = [undefined];
@@ -533,15 +525,14 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with option include', async () => {
-      const result = await Post_Attr.findOne({
+      const query = async () => Post_Attr.findOne({
         include: {
           model: User_Attr,
         },
       });
-      const included = result?.user;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'user'>;
 
       type Match = [Post_Attr, null];
       type NotMatch = [undefined];
@@ -554,15 +545,14 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with option include [array]', async () => {
-      const result = await User_Attr.findOne({
+      const query = async () => User_Attr.findOne({
         include: {
           model: Post_Attr,
         },
       });
-      const included = result?.posts;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'posts'>;
 
       type Match = [User_Attr, null];
       type NotMatch = [undefined];
@@ -577,16 +567,15 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with named option include', async () => {
-      const result = await Post_Attr.findOne({
+      const query = async () => Post_Attr.findOne({
         include: {
           model: User_Attr,
           as: 'somebody',
         },
       });
-      const included = result?.somebody;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'somebody'>;
 
       type Match = [Post_Attr, null];
       type NotMatch = [undefined];
@@ -599,16 +588,15 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with named option include [array]', async () => {
-      const result = await User_Attr.findOne({
+      const query = async () => User_Attr.findOne({
         include: {
           model: Post_Attr,
           as: 'stuff',
         },
       });
-      const included = result?.stuff;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'stuff'>;
 
       type Match = [User_Attr, null];
       type NotMatch = [undefined];
@@ -623,16 +611,15 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with required option include', async () => {
-      const result = await Post_Attr.findOne({
+      const query = async () => Post_Attr.findOne({
         include: {
           model: User_Attr,
           required: true,
         },
       });
-      const included = result?.user;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'user'>;
 
       type Match = [Post_Attr, null];
       type NotMatch = [undefined];
@@ -645,16 +632,15 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with required option include [array]', async () => {
-      const result = await User_Attr.findOne({
+      const query = async () => User_Attr.findOne({
         include: {
           model: Post_Attr,
           required: true,
         },
       });
-      const included = result?.posts;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'posts'>;
 
       type Match = [User_Attr, null];
       type NotMatch = [undefined];
@@ -669,17 +655,16 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with named required option include', async () => {
-      const result = await Post_Attr.findOne({
+      const query = async () => Post_Attr.findOne({
         include: {
           model: User_Attr,
           required: true,
           as: 'somebody',
         },
       });
-      const included = result?.somebody;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'somebody'>;
 
       type Match = [Post_Attr, null];
       type NotMatch = [undefined];
@@ -692,17 +677,16 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on query with named required option include [array]', async () => {
-      const result = await User_Attr.findOne({
+      const query = async () => User_Attr.findOne({
         include: {
           model: Post_Attr,
           required: true,
           as: 'stuff',
         },
       });
-      const included = result?.stuff;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'stuff'>;
 
       type Match = [User_Attr, null];
       type NotMatch = [undefined];
@@ -719,14 +703,13 @@ describe('Model#findOne - typescript augment checks', () => {
 
   describe('Required declared root with one level of inclusion', () => {
     it('should match on required query with model include', async () => {
-      const result = await Post_Assoc.findOne({
+      const query = async () => Post_Assoc.findOne({
         rejectOnEmpty: true,
         include: User_Assoc,
       });
-      const included = result.user;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'user'>;
 
       type Match = [Post_Assoc];
       type NotMatch = [null, undefined];
@@ -741,16 +724,15 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on required query with option include', async () => {
-      const result = await Post_Assoc.findOne({
+      const query = async () => Post_Assoc.findOne({
         rejectOnEmpty: true,
         include: {
           model: User_Assoc,
         },
       });
-      const included = result.user;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'user'>;
 
       type Match = [Post_Assoc];
       type NotMatch = [null, undefined];
@@ -765,17 +747,16 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on required query with named option include', async () => {
-      const result = await Post_Assoc.findOne({
+      const query = async () => Post_Assoc.findOne({
         rejectOnEmpty: true,
         include: {
           model: User_Assoc,
           as: 'somebody',
         },
       });
-      const included = result.somebody;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'somebody'>;
 
       type Match = [Post_Assoc];
       type NotMatch = [null, undefined];
@@ -790,17 +771,16 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on required query with required option include', async () => {
-      const result = await Post_Assoc.findOne({
+      const query = async () => Post_Assoc.findOne({
         rejectOnEmpty: true,
         include: {
           model: User_Assoc,
           required: true,
         },
       });
-      const included = result.user;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'user'>;
 
       type Match = [Post_Assoc];
       type NotMatch = [null, undefined];
@@ -815,7 +795,7 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on required query with named required option include', async () => {
-      const result = await Post_Assoc.findOne({
+      const query = async () => Post_Assoc.findOne({
         rejectOnEmpty: true,
         include: {
           model: User_Assoc,
@@ -823,10 +803,9 @@ describe('Model#findOne - typescript augment checks', () => {
           required: true,
         },
       });
-      const included = result.somebody;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'somebody'>;
 
       type Match = [Post_Assoc];
       type NotMatch = [null, undefined];
@@ -843,14 +822,13 @@ describe('Model#findOne - typescript augment checks', () => {
 
   describe('Required decorated root with one level of inclusion', () => {
     it('should match on required query with model include', async () => {
-      const result = await Post_Attr.findOne({
+      const query = async () => Post_Attr.findOne({
         rejectOnEmpty: true,
         include: User_Attr,
       });
-      const included = result.user;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'user'>;
 
       type Match = [Post_Attr];
       type NotMatch = [null, undefined];
@@ -865,16 +843,15 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on required query with option include', async () => {
-      const result = await Post_Attr.findOne({
+      const query = async () => Post_Attr.findOne({
         rejectOnEmpty: true,
         include: {
           model: User_Attr,
         },
       });
-      const included = result.user;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'user'>;
 
       type Match = [Post_Attr];
       type NotMatch = [null, undefined];
@@ -889,17 +866,16 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on required query with named option include', async () => {
-      const result = await Post_Attr.findOne({
+      const query = async () => Post_Attr.findOne({
         rejectOnEmpty: true,
         include: {
           model: User_Attr,
           as: 'somebody',
         },
       });
-      const included = result.somebody;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'somebody'>;
 
       type Match = [Post_Attr];
       type NotMatch = [null, undefined];
@@ -914,17 +890,16 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on required query with required option include', async () => {
-      const result = await Post_Attr.findOne({
+      const query = async () => Post_Attr.findOne({
         rejectOnEmpty: true,
         include: {
           model: User_Attr,
           required: true,
         },
       });
-      const included = result.user;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'user'>;
 
       type Match = [Post_Attr];
       type NotMatch = [null, undefined];
@@ -939,7 +914,7 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on required query with named required option include', async () => {
-      const result = await Post_Attr.findOne({
+      const query = async () => Post_Attr.findOne({
         rejectOnEmpty: true,
         include: {
           model: User_Attr,
@@ -947,10 +922,9 @@ describe('Model#findOne - typescript augment checks', () => {
           required: true,
         },
       });
-      const included = result.somebody;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'somebody'>;
 
       type Match = [Post_Attr];
       type NotMatch = [null, undefined];
@@ -965,16 +939,15 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on required query with association object option include', async () => {
-      const result = await Post_Attr.findOne({
+      const query = async () => Post_Attr.findOne({
         rejectOnEmpty: true,
         include: {
           association: Post_Attr.getAssociationWithModel(User_Attr, 'user'),
         },
       });
-      const included = result.user;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'user'>;
 
       type Match = [Post_Attr];
       type NotMatch = [null, undefined];
@@ -989,16 +962,15 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on required query with association object option include [array]', async () => {
-      const result = await User_Attr.findOne({
+      const query = async () => User_Attr.findOne({
         rejectOnEmpty: true,
         include: {
           association: User_Attr.getAssociationWithModel(Post_Attr, 'posts'),
         },
       });
-      const included = result.posts;
 
-      type RT = typeof result;
-      type IT = typeof included;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'posts'>;
 
       type Match = [User_Attr];
       type NotMatch = [null, undefined];
@@ -1015,19 +987,17 @@ describe('Model#findOne - typescript augment checks', () => {
 
   describe('recursion', () => {
     it('should match on required query with option included and nested model include', async () => {
-      const result = await User_Assoc.findOne({
+      const query = async () => User_Assoc.findOne({
         rejectOnEmpty: true,
         include: {
           model: Post_Assoc,
           include: Comment_Assoc,
         },
       });
-      const included = result.posts;
-      const included2 = included?.[0].comments;
 
-      type RT = typeof result;
-      type IT = typeof included;
-      type IT2 = typeof included2;
+      type RT = Awaited<ReturnType<typeof query>>;
+      type IT = OptionalPick<RT, 'posts'>;
+      type IT2 =  OptionalPick<IT[number], 'comments'>;
 
       type Match = [User_Assoc];
       type NotMatch = [undefined, null];
@@ -1047,7 +1017,7 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on required query with option included and nested model include', async () => {
-      const result = await User_Assoc.findOne({
+      const query = async () => User_Assoc.findOne({
         rejectOnEmpty: true,
         include: {
           model: Post_Assoc,
@@ -1058,12 +1028,12 @@ describe('Model#findOne - typescript augment checks', () => {
           },
         },
       });
-      const included = result.secondary;
-      const included2 = included?.[0].tertiary;
 
-      type RT = typeof result;
-      type IT = typeof included;
-      type IT2 = typeof included2;
+      type RT = Awaited<ReturnType<typeof query>>;
+      // const included = result.secondary;
+      type IT = OptionalPick<RT, 'secondary'>;
+      // const included2 = included?.[0].tertiary;
+      type IT2 =  OptionalPick<IT[number], 'tertiary'>;
 
       type Match = [User_Assoc];
       type NotMatch = [undefined, null];
@@ -1083,7 +1053,7 @@ describe('Model#findOne - typescript augment checks', () => {
     });
 
     it('should match on required query with option included and nested model include [raw]', async () => {
-      const result = await User_Assoc.findOne({
+      const query = async () => User_Assoc.findOne({
         raw: true,
         rejectOnEmpty: true,
         include: {
@@ -1095,12 +1065,12 @@ describe('Model#findOne - typescript augment checks', () => {
           },
         },
       });
-      const included = result.secondary;
-      const included2 = included?.[0].tertiary;
 
-      type RT = typeof result;
-      type IT = typeof included;
-      type IT2 = typeof included2;
+      type RT = Awaited<ReturnType<typeof query>>;
+      // const included = result.secondary;
+      type IT = OptionalPick<RT, 'secondary'>;
+      // const included2 = included?.[0].tertiary;
+      type IT2 =  OptionalPick<IT[number], 'tertiary'>;
 
       type Match = [UserRaw];
       type NotMatch = [undefined, null, User_Assoc];

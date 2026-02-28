@@ -2898,7 +2898,6 @@ __metadata:
     chai: "npm:4.5.0"
     chai-as-promised: "npm:7.1.2"
     chai-datetime: "npm:1.8.1"
-    cross-env: "npm:10.1.0"
     dayjs: "npm:^1.11.19"
     debug: "npm:^4.4.3"
     delay: "npm:5.0.0"
