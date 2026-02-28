@@ -961,11 +961,10 @@ type IncludedByOption<M extends ModelStatic, I extends IncludeOptions, IsRaw ext
  * This is for augmenting the return type of `findOne`, `findAll` queries.
  *
  * Can only work for the following cases:
- * - associations explicitly defined on the query (`{ as: '...'}`)
- * - associations explicitly declared on the model (`declare static associations`)
- * - associations with properties declared on the class (`@HasOne(...) declare user: NonAttribute<User>` )
+ * - associations explicitly declared on the model class (`declare static associations: { ... }`)
+ * - property relationships declared as NonAttributes on the model class (`@HasOne(...) declare user: NonAttribute<User | null>` )
  *
- * Runtime associations (`User.hasMany(Post)`) are unfortunately not discoverable at type-time.
+ * Runtime-only associations (`User.hasMany(Post)`) are unfortunately not discoverable at type-time.
  */
 type IncludesOf<M extends ModelStatic, I extends IncludeableNoStatic | ModelStatic, IsRaw extends boolean = false> =
   // If I is a model type, determine property name and rebrand
