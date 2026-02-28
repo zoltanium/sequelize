@@ -2737,7 +2737,11 @@ export abstract class Model<
     const R = Attributes<InstanceType<MC>>,
   >(
     this: MC,
-    options: FindOptions<R> & { raw: true; rejectOnEmpty?: false; include: AllowArray<I> },
+    options: FindOptions<Attributes<InstanceType<MC>>> & {
+      raw: true;
+      rejectOnEmpty?: false;
+      include: AllowArray<I>;
+    },
   ): Promise<(R & IncludesOf<MC, I, true>) | null>;
   // Raw, notnull, has includes
   static findOne<
@@ -2746,7 +2750,10 @@ export abstract class Model<
     const R = Attributes<InstanceType<MC>>,
   >(
     this: MC,
-    options: NonNullFindOptions<R> & { raw: true; include: AllowArray<I> },
+    options: NonNullFindOptions<Attributes<InstanceType<MC>>> & {
+      raw: true;
+      include: AllowArray<I>;
+    },
   ): Promise<R & IncludesOf<MC, I, true>>;
   // Notnull, has includes
   static findOne<
