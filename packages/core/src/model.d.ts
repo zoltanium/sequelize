@@ -648,6 +648,13 @@ export type Includeable =
   | { all: true; nested?: true }
   | string;
 
+// To avoid modelstatic circular reference
+type IncludeableNoStatic =
+  | Association
+  | IncludeOptions
+  | { all: true; nested?: true }
+  | string;
+
 /**
  * Complex include options
  */
@@ -756,6 +763,220 @@ export interface IncludeOptions extends Filterable<any>, Projectable<any>, Paran
    */
   subQuery?: boolean;
 }
+
+/*
+ *********************
+ *     Utilities     *
+ *********************
+ */
+// Bidirectional equivalence
+type Same<A, B> = A extends B ? (B extends A ? true : false) : false;
+
+// K,V => { K: V }
+type AsInclude<K extends string, V> = { [P in K]: V };
+
+// Extract instance from class
+type InstanceOfClass<MC extends ModelStatic> =
+  MC extends ModelStatic<infer MI> ? MI : never;
+
+// Used to filter out `any` from unbounded types
+type IsAny<T> = 0 extends (1 & T) ? true : false;
+
+/*
+ *********************
+ *     Inference     *
+ *********************
+ */
+// Type keys on M that match NonAttribute<T>
+type NonAttributeOfType<M extends Model, T> = {
+  [K in keyof M]-?:
+    IsAny<M[K]> extends true
+      ? never
+      : M[K] extends NonAttribute<T> | undefined
+        ? (K extends string ? K : never)
+        : M[K] extends NonAttribute<T | null> | undefined
+          ? (K extends string ? K : never)
+          : never
+}[keyof M];
+
+// Statically defined associations of M
+type AssocRecord<M extends ModelStatic> =
+  M extends { associations: infer A } ? A : never;
+
+// Keys of associations on M
+type AssocKeyOf<M extends ModelStatic> =
+  keyof AssocRecord<M> & string;
+
+// Associations defined on M
+type AssocOf<M extends ModelStatic> =
+  AssocRecord<M>[AssocKeyOf<M>];
+
+// Name of association A in M
+type AssocNameOf<M extends ModelStatic, A extends Association> = {
+  [K in AssocKeyOf<M>]:
+    AssocRecord<M>[K] extends A ? K : never;
+}[AssocKeyOf<M>];
+
+// Keys on M associations which target T
+type AssocKeysToTarget<M extends ModelStatic, T extends ModelStatic> = {
+  [K in AssocKeyOf<M>]:
+    AssocRecord<M>[K] extends { target: infer S }
+      ? S extends abstract new (...args: any[]) => infer I
+        ? Same<I, InstanceType<T>> extends true ? K : never
+        : never
+      : never
+}[AssocKeyOf<M>];
+
+// Keys on M associations which source from T
+type AssocKeysToSource<M extends ModelStatic, T extends ModelStatic> = {
+  [K in AssocKeyOf<M>]:
+    AssocRecord<M>[K] extends { source: infer S }
+      ? S extends abstract new (...args: any[]) => infer I
+        ? Same<I, InstanceType<T>> extends true ? K : never
+        : never
+      : never
+}[AssocKeyOf<M>];
+
+// Type of association on M which targets T
+type AssocTypeToTarget<M extends ModelStatic, T extends ModelStatic> =
+  AssocRecord<M>[AssocKeysToTarget<M, T>];
+
+// Type of association on M which sources from T
+type AssocTypeToSource<M extends ModelStatic, T extends ModelStatic> =
+  AssocRecord<M>[AssocKeysToSource<M, T>];
+
+// Name of association on M which targets T
+type AssocNameToTarget<M extends ModelStatic, T extends ModelStatic> =
+  AssocKeysToTarget<M, T>;
+
+// Name of association on M which source from T
+type AssocNameToSource<M extends ModelStatic, T extends ModelStatic> =
+  AssocKeysToSource<M, T>;
+
+// Name of association on M with T, either direction
+type AssocNameFrom<M extends ModelStatic, T extends ModelStatic> =
+  AssocNameToTarget<M, T> | AssocNameToSource<M, T>;
+
+type AssocFrom<M extends ModelStatic, T extends ModelStatic> =
+  AssocTypeToTarget<M, T> | AssocTypeToSource<M, T>;
+
+/*
+ ***********************
+ *     Cardinality     *
+ ***********************
+ */
+
+// Association cardinality+nullability narrower
+type CardinalAssociationType<A extends Association, IsRaw extends boolean, X extends IncludesOf<any, any> = ({} | null)> =
+  A extends HasManyAssociation<any, infer T extends Model, any, any> ? NonNullable<Array<ProjectInstance<T, IsRaw> & X>> :
+  A extends BelongsToManyAssociation<any, infer T extends Model, any, any, any> ? NonNullable<Array<ProjectInstance<T, IsRaw> & X>> :
+  A extends HasOneAssociation<any, infer T extends Model, any, any> ? ((ProjectInstance<T, IsRaw> & X) | null) :
+  A extends BelongsToAssociation<any, infer T extends Model, any, any> ? ((ProjectInstance<T, IsRaw> & X) | null) :
+  // fallback: union cardinality
+  A extends Association<any, infer T extends Model, any, any> ? (T & X) | Array<ProjectInstance<T, IsRaw> & X> | null :
+  never;
+
+// NonAttribute cardinality+nullability narrower (associated T declared on M)
+type CardinalNonAttributeType<M extends Model, T extends Model, IsRaw extends boolean, X extends IncludesOf<any, any> = ({} | null)> =
+  // If not found as T
+  [NonAttributeOfType<M, T>] extends [never]
+    // Try T[]
+    ? [NonAttributeOfType<M, T[]>] extends [never]
+      // Fallback: union cardinality
+      ? (ProjectInstance<T, IsRaw> & X) | null | Array<ProjectInstance<T, IsRaw> & X>
+      : NonNullable<Array<ProjectInstance<T, IsRaw> & X>>
+    : ((ProjectInstance<T, IsRaw> & X) | null);
+
+/*
+ ***************************
+ *     Include returns     *
+ ***************************
+ */
+
+// Model inclusions are inherently nullable without specified options
+type IncludedByModel<M extends ModelStatic, T extends ModelStatic, IsRaw extends boolean> =
+  AssocNameFrom<M, T> extends [never]
+    // Named by declaration
+    ? AsInclude<NonAttributeOfType<InstanceType<M>, InstanceType<T>>, CardinalNonAttributeType<InstanceType<M>, InstanceType<T>, IsRaw>>
+    // Named by association
+    : AsInclude<AssocNameFrom<M, T>, CardinalAssociationType<AssocFrom<M, T>, IsRaw>>;
+
+type IncludedByAssociation<M extends ModelStatic, A extends Association, IsRaw extends boolean> =
+  AsInclude<
+    AssocNameOf<M, A>,
+    CardinalAssociationType<A, IsRaw>
+  >;
+
+/*
+ ***********************************
+ *     Include Options helpers     *
+ ***********************************
+ */
+
+type ProjectInstance<I extends Model, Raw extends boolean> =
+  Raw extends true ? Attributes<I> : I;
+
+type IncludeOptionsKey<M extends ModelStatic, I extends IncludeOptions> =
+  // Use the alias, if supplied
+  I extends { as: infer A extends string }
+    ? A
+    // Attempt to infer the alias from static associations
+    : I extends { model: infer U extends ModelStatic }
+      ? AssocNameFrom<M, U> extends never
+        // Attempt to infer the alias from M class declarations (as a union of possibilities by type)
+        ? NonAttributeOfType<InstanceType<M>, InstanceType<U>>
+        : AssocNameFrom<M, U>
+      : never;
+
+type ApplyIncludeNullability<I extends IncludeOptions, T> =
+  T extends any[] ? NonNullable<T> :
+  I extends { required: true } ? NonNullable<T> :
+  I extends { where: any } ? NonNullable<T> :
+  T | null;
+
+type IncludeOptionsModel<M extends ModelStatic, I extends IncludeOptions, IsRaw extends boolean, X extends IncludesOf<any, any> = ({} | null)> =
+  I extends IncludeOptions & { model: ModelStatic }
+    ? I extends { model: infer T extends ModelStatic }
+      ? ApplyIncludeNullability<
+        I,
+        AssocNameFrom<M, T> extends [never]
+          ? CardinalNonAttributeType<InstanceType<M>, InstanceType<T>, IsRaw, X>
+          : CardinalAssociationType<AssocFrom<M, T>, IsRaw, X>
+      >
+    : unknown
+  : unknown;
+
+type IncludedByOption<M extends ModelStatic, I extends IncludeOptions, IsRaw extends boolean, X extends IncludesOf<any, any> = ({} | null)> =
+  // If by association, destructure
+  I extends { association: infer A extends Association }
+    ? IncludedByAssociation<M, A, IsRaw>
+    // Extend with inferred keyname
+    : AsInclude<IncludeOptionsKey<M, I>, IncludeOptionsModel<M, I, IsRaw, X>>;
+
+/**
+ * Utility typeblock for recursively extracting the included models from an {@link Includeable}.
+ * This is for augmenting the return type of `findOne`, `findAll` queries.
+ *
+ * Can only work for the following cases:
+ * - associations explicitly defined on the query (`{ as: '...'}`)
+ * - associations explicitly declared on the model (`declare static associations`)
+ * - associations with properties declared on the class (`@HasOne(...) declare user: NonAttribute<User>` )
+ *
+ * Runtime associations (`User.hasMany(Post)`) are unfortunately not discoverable at type-time.
+ */
+type IncludesOf<M extends ModelStatic, I extends IncludeableNoStatic | ModelStatic, IsRaw extends boolean = false> =
+  // If I is a model type, determine property name and rebrand
+  I extends ModelStatic
+    ? IncludedByModel<M, I, IsRaw>
+    // If I is an IncludeOptions
+    : I extends IncludeOptions
+        // If nested
+        ? I extends { model: infer M2 extends ModelStatic; include: infer I2 extends Includeable }
+          // Recurse
+          ? (IncludedByOption<M, I, IsRaw, IncludesOf<M2, I2, IsRaw>>)
+          // Else destructure
+          : IncludedByOption<M, I, IsRaw>
+        : unknown;
 
 type OrderItemAssociation =
   | Association
@@ -2415,10 +2636,22 @@ export abstract class Model<
    *
    * @returns A promise that will resolve with the array containing the results of the SELECT query.
    */
+  // Raw, includes
+  static findAll<const MC extends ModelStatic<Model>, const I extends IncludeableNoStatic | ModelStatic<Model>, const R = Attributes<InstanceType<MC>>>(
+    this: MC,
+    options: Omit<FindOptions<Attributes<InstanceType<MC>>>, 'raw' | 'includes'> & { raw: true; include: AllowArray<I> },
+  ): Promise<Array<R & IncludesOf<MC, I, true>>>;
+  // Normal, includes
+  static findAll<const MC extends ModelStatic<Model>, const I extends IncludeableNoStatic | ModelStatic<Model>>(
+    this: MC,
+    options: Omit<FindOptions<Attributes<InstanceType<MC>>>, 'includes'> & { include: AllowArray<I> },
+  ): Promise<Array<InstanceType<MC> & IncludesOf<MC, I>>>;
+  // Raw
   static findAll<M extends Model, R = Attributes<M>>(
     this: ModelStatic<M>,
     options: Omit<FindOptions<Attributes<M>>, 'raw'> & { raw: true },
   ): Promise<R[]>;
+  // Normal
   static findAll<M extends Model>(
     this: ModelStatic<M>,
     options?: FindOptions<Attributes<M>>,
@@ -2430,18 +2663,42 @@ export abstract class Model<
    * Returns the first instance corresponding matching the query.
    * If not found, returns null or throws an error if {@link FindOptions.rejectOnEmpty} is set.
    */
+  // Raw, nullable, has includes
+  static findOne<const MC extends ModelStatic<Model>, const I extends IncludeableNoStatic | ModelStatic<Model>, const R = Attributes<InstanceType<MC>>>(
+    this: MC,
+    options: FindOptions<R> & { raw: true; rejectOnEmpty?: false; include: AllowArray<I> },
+  ): Promise<(R & IncludesOf<MC, I, true>) | null>;
+  // Raw, notnull, has includes
+  static findOne<const MC extends ModelStatic<Model>, const I extends IncludeableNoStatic | ModelStatic<Model>, const R = Attributes<InstanceType<MC>>>(
+    this: MC,
+    options: NonNullFindOptions<R> & { raw: true; include: AllowArray<I> },
+  ): Promise<R & IncludesOf<MC, I, true>>;
+  // Notnull, has includes
+  static findOne<const MC extends ModelStatic<Model>, const I extends IncludeableNoStatic | ModelStatic<Model>>(
+    this: MC,
+    options: NonNullFindOptions<Attributes<InstanceType<MC>>> & { include: AllowArray<I> },
+  ): Promise<InstanceType<MC> & IncludesOf<MC, I>>;
+  // Nullable, has includes
+  static findOne<const MC extends ModelStatic<Model>, const I extends IncludeableNoStatic | ModelStatic<Model>>(
+    this: MC,
+    options: FindOptions<Attributes<InstanceType<MC>>> & { include: AllowArray<I> },
+  ): Promise<(InstanceType<MC> & IncludesOf<MC, I>) | null>;
+  // Raw, nullable
   static findOne<M extends Model, R = Attributes<M>>(
     this: ModelStatic<M>,
     options: FindOptions<Attributes<M>> & { raw: true; rejectOnEmpty?: false },
   ): Promise<R | null>;
+  // Raw, notnull
   static findOne<M extends Model, R = Attributes<M>>(
     this: ModelStatic<M>,
     options: NonNullFindOptions<Attributes<M>> & { raw: true },
   ): Promise<R>;
+  // Not null
   static findOne<M extends Model>(
     this: ModelStatic<M>,
     options: NonNullFindOptions<Attributes<M>>,
   ): Promise<M>;
+  // Nullable
   static findOne<M extends Model>(
     this: ModelStatic<M>,
     options?: FindOptions<Attributes<M>>,
